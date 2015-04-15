@@ -1,0 +1,41 @@
+===============================
+=== sccKit 1.4.0 User Guide ===
+===============================
+
+[1. Introduction]
+
+- SCC board (Rocky Lake board) = BMC (Board Management Controller) + FPGA + Rock Creek chip
+- MCPC has 2 ethernet ports (eth0: connect to Internet, eth1: connect to BMC -> changed to connect to SCC cores / use eth1:1 for connecting to BMC) and a PCIe interface
+- BMC: used for hardware control and monitoring. Users telnet into BMC to power on/off the Rock Creek chip, read status, etc. BMC connects to the cores with a JTAG interface. It also connects to the FPGA.
+- FPGA: connects to the Rock Creek chip over the PCIe interface
+- Rock Creek chip: 4 x 6 array of 24 tiles with 2 P54C cores per tile
+- With sccKit 1.4.0, cores use both PCIe and eMAC to communicate with MCPC
+
+[2. The eMAC Interface]
+
+- Up to 4 eMAC modules
+- eth1 is part of the eMAC interface
+- Programs on the cores can send data to MCPC over eth1
+- Cores use Ethernet over eMAC to communicate with MCPC
+- 2 choices: Ethernet over PCIe and Ethernet over eMAC
+- But no reason to choose Ethernet over PCIe (has known bugs), so choose Ethernet over eMAC!
+- System communicates with MCPC over PCIe for sccKit commands, and over eMAC for core programs
+- Sending and receiving of Ethernet frames to/from SCC cores is done via buffers in DDR3 memory
+space. The sending core writes its frames into the buffer, informs the FPGA hardware that new
+frames are present. The hardware then pulls the frames from the buffer and transfers them to the
+external Ethernet ports. When the HW receives frames on the external Ethernet port, it puts them
+into the corresponding DDR3 memory buffer, tells the core that new frames are present and the
+receiving SCC core starts pulling the frames from the buffer. Signaling can be done sending
+interrupts to the SCC core. Alternatively, the core can poll the head of the buffer to determine a
+change in the write index.
+
+[2.1. Memory Buffer Structure]
+
+- Rx & Tx buffers are built as ring buffers in DDR3 memory
+- Read/write indexes are stored in FPGA registers
+- Head address of buffer stores copies of read/write indexes (so that SCC cores can look them up by accessing DDR3 memory instead of FPGA registers)
+- Organized in 32-byte chunks (size of 1 cache line): optimize data transfer between FPGA and SCC
+- Start address can be in DDR3 memory or in the on-die MPB
+- Size limited to 2MB
+- In front of each frame, first 2 bytes represent frame length
+- Figure 3: Ethernet Buffer Organization
