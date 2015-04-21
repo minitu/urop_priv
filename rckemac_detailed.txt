@@ -1,0 +1,13 @@
+<Flow>
+
+emac_module_init -> init_xilinx_port -> alloc_netdev with emac_init
+	emac_open: get offset, subdest, route, mode -> setup_emac -> set mac address -> enable interrupt -> netif_start_queue
+		emac_tx
+		emac_rx
+	emac_stop
+emac_module_exit
+
+<Questions>
+
+- Line 142: Why check if core is 0? (core is set in emac_module_init, line 1062)
+- Line 164: Why set transmitter_addr when it was already set in line 139?
