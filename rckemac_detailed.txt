@@ -11,3 +11,4 @@ emac_module_exit
 
 - Line 142: Why check if core is 0? (core is set in emac_module_init, line 1062)
 - Line 164: Why set transmitter_addr when it was already set in line 139?
+- Why use emac_readl instead of readl? Seems to be interleaved without apparent distinction...
