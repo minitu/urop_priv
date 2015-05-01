@@ -1,0 +1,208 @@
+[ netif functions in rckemac.c]
+
+* emac_interrupt
+- set_lapic_mask(EMAC_LVT, dev->irq)
+- netif_rx_schedule(dev)
+
+* emac_open
+- netif_start_queue(dev)
+
+* emac_stop
+- netif_stop_queue(dev)
+
+* emac_rx
+- netif_rx(skb)
+
+* emac_poll
+- netif_rx_complete(dev)
+
+* emac_tx_timeout
+- netif_wake_queue(dev)
+
+
+
+
+
+
+
+/******************** set_lapic_mask ********************/
+
+[ drivers/net/rckemac.h ]
+
+/* Interrupt configuration */
+#ifdef USE_LVT0
+	#define EMAC_IRQ_MASK						0x00000002
+	#define EMAC_IRQ_NR							4
+	#define EMAC_LVT							APIC_LVT0
+	#define EMAC_IRQ_CONFIG						0
+#else
+	#define EMAC_IRQ_MASK						0x00000001
+	#define EMAC_IRQ_NR							3
+	#define EMAC_LVT							APIC_LVT1
+	#define EMAC_IRQ_CONFIG						1
+#endif
+
+[ include/asm/apicdef.h ]
+
+#define		APIC_LVT0	0x350
+#define 	APIC_LVT1	0x360
+
+[ include/asm/mach-mcemu/mach_apic.h ]
+
+static __inline void set_lapic_mask(unsigned long reg, unsigned int irq)
+{
+  unsigned long v;
+  v = apic_read(reg);
+  apic_write_around(reg, v | APIC_LVT_MASKED);
+}
+
+[ include/asm/apic.h ]
+
+static __inline unsigned long apic_read(unsigned long reg)
+{
+	return *((volatile unsigned long *)(APIC_BASE+reg));
+}
+
+#ifdef CONFIG_X86_GOOD_APIC
+# define FORCE_READ_AROUND_WRITE 0
+# define apic_read_around(x)
+# define apic_write_around(x,y) apic_write((x),(y))
+#else
+# define FORCE_READ_AROUND_WRITE 1
+# define apic_read_around(x) apic_read(x)
+# define apic_write_around(x,y) apic_write_atomic((x),(y))
+#endif
+
+CONFIG_X86_GOOD_APIC : P6+ cores
+
+static __inline void apic_write(unsigned long reg, unsigned long v)
+{
+	*((volatile unsigned long *)(APIC_BASE+reg)) = v;
+}
+
+static __inline void apic_write_atomic(unsigned long reg, unsigned long v)
+{
+	xchg((volatile unsigned long *)(APIC_BASE+reg), v);
+}
+
+[ include/asm/apicdef.h ]
+
+#define APIC_BASE (fix_to_virt(FIX_APIC_BASE))
+
+[ include/asm/fixmap.h ]
+
+enum fixed_addresses {
+	FIX_HOLE,
+	FIX_VSYSCALL,
+#ifdef CONFIG_X86_LOCAL_APIC
+	FIX_APIC_BASE,	/* local (CPU) APIC) -- required for SMP or not */
+#endif
+
+FIX_APIC_BASE = 3 (if CONFIG_X86_LOCAL_APIC is defined)
+
+/*
+ * 'index to address' translation. If anyone tries to use the idx
+ * directly without tranlation, we catch the bug with a NULL-deference
+ * kernel oops. Illegal ranges of incoming indices are caught too.
+ */
+static __always_inline unsigned long fix_to_virt(const unsigned int idx)
+{
+	/*
+	 * this branch gets completely eliminated after inlining,
+	 * except when someone tries to use fixaddr indices in an
+	 * illegal way. (such as mixing up address types or using
+	 * out-of-range indices).
+	 *
+	 * If it doesn't get removed, the linker will complain
+	 * loudly with a reasonably clear error message..
+	 */
+	if (idx >= __end_of_fixed_addresses)
+		__this_fixmap_does_not_exist();
+
+        return __fix_to_virt(idx);
+}
+
+extern void __this_fixmap_does_not_exist(void);
+
+__end_of_fixed_addresses: end of enum fixed_addresses
+
+#define __fix_to_virt(x)	(FIXADDR_TOP - ((x) << PAGE_SHIFT))
+
+#define FIXADDR_TOP	((unsigned long)__FIXADDR_TOP)
+
+#define __FIXADDR_TOP	0xfffff000
+
+[ include/asm/page.h ]
+
+#define PAGE_SHIFT	12
+
+[ include/asm/system.h ]
+
+#define xchg(ptr,v) ((__typeof__(*(ptr)))__xchg((unsigned long)(v),(ptr),sizeof(*(ptr))))
+
+__typeof__: GCC alternative keyword (same as typeof)
+
+/*
+ * Note: no "lock" prefix even on SMP: xchg always implies lock anyway
+ * Note 2: xchg has side effect, so that attribute volatile is necessary,
+ *	  but generally the primitive is invalid, *ptr is output argument. --ANK
+ */
+static inline unsigned long __xchg(unsigned long x, volatile void * ptr, int size)
+{
+	switch (size) {
+		case 1:
+			__asm__ __volatile__("xchgb %b0,%1"
+				:"=q" (x)
+				:"m" (*__xg(ptr)), "0" (x)
+				:"memory");
+			break;
+		case 2:
+			__asm__ __volatile__("xchgw %w0,%1"
+				:"=r" (x)
+				:"m" (*__xg(ptr)), "0" (x)
+				:"memory");
+			break;
+		case 4:
+			__asm__ __volatile__("xchgl %0,%1"
+				:"=r" (x)
+				:"m" (*__xg(ptr)), "0" (x)
+				:"memory");
+			break;
+	}
+	return x;
+}
+
+struct __xchg_dummy { unsigned long a[100]; };
+#define __xg(x) ((struct __xchg_dummy *)(x))
+
+
+/******************** netif_rx_schedule ********************/
+
+
+
+
+
+
+
+
+
+
+
+
+
+[ include/linux/netdevice.h ]
+
+  50 #include <linux/netdev_features.h>
+  51 #include <linux/neighbour.h>
+  52 #include <uapi/linux/netdevice.h>
+
+2057 static inline void netif_start_queue(struct net_device *dev)
+2058 {
+2059     netif_tx_start_queue(netdev_get_tx_queue(dev, 0));
+2060 }
+
+2046 static inline void netif_tx_start_queue(struct netdev_queue *dev_queue)
+2047 {
+2048     clear_bit(__QUEUE_STATE_DRV_XOFF, &dev_queue->state);
+2049 }
+
