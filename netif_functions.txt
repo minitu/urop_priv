@@ -176,19 +176,126 @@ struct __xchg_dummy { unsigned long a[100]; };
 #define __xg(x) ((struct __xchg_dummy *)(x))
 
 
+
+
+
+
 /******************** netif_rx_schedule ********************/
 
+[ include/linux/netdevice.h ]
+
+/* Try to reschedule poll. Called by irq handler. */
+
+static inline void netif_rx_schedule(struct net_device *dev)
+{
+	if (netif_rx_schedule_prep(dev))
+		__netif_rx_schedule(dev);
+}
+
+/* Test if receive needs to be scheduled but only if up */
+static inline int netif_rx_schedule_prep(struct net_device *dev)
+{
+	return netif_running(dev) && __netif_rx_schedule_prep(dev);
+}
+
+static inline int netif_running(const struct net_device *dev)
+{
+	return test_bit(__LINK_STATE_START, &dev->state);
+}
+
+/* Test if receive needs to be scheduled */
+static inline int __netif_rx_schedule_prep(struct net_device *dev)
+{
+	return !test_and_set_bit(__LINK_STATE_RX_SCHED, &dev->state);
+}
+
+enum netdev_state_t
+{
+	__LINK_STATE_XOFF=0,
+	__LINK_STATE_START,
+	__LINK_STATE_PRESENT,
+	__LINK_STATE_SCHED,
+	__LINK_STATE_NOCARRIER,
+	__LINK_STATE_RX_SCHED,
+	__LINK_STATE_LINKWATCH_PENDING
+};
+
+/* Add interface to tail of rx poll list. This assumes that _prep has
+ * already been called and returned 1.
+ */
+
+static inline void __netif_rx_schedule(struct net_device *dev)
+{
+	unsigned long flags;
+
+	local_irq_save(flags);
+	dev_hold(dev);
+	list_add_tail(&dev->poll_list, &__get_cpu_var(softnet_data).poll_list);
+	if (dev->quota < 0)
+		dev->quota += dev->weight;
+	else
+		dev->quota = dev->weight;
+	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
+	local_irq_restore(flags);
+}
+
+[ include/asm/bitops.h ]
+
+#if 0 /* Fool kernel-doc since it doesn't do macros yet */
+/**
+ * test_bit - Determine whether a bit is set
+ * @nr: bit number to test
+ * @addr: Address to start counting from
+ */
+static int test_bit(int nr, const volatile void * addr);
+#endif
+
+static __always_inline int constant_test_bit(int nr, const volatile unsigned long *addr)
+{
+	return ((1UL << (nr & 31)) & (addr[nr >> 5])) != 0;
+}
+
+static inline int variable_test_bit(int nr, const volatile unsigned long * addr)
+{
+	int oldbit;
+
+	__asm__ __volatile__(
+		"btl %2,%1\n\tsbbl %0,%0"
+		:"=r" (oldbit)
+		:"m" (ADDR),"Ir" (nr));
+	return oldbit;
+}
+
+#define test_bit(nr,addr) \
+(__builtin_constant_p(nr) ? \
+ constant_test_bit((nr),(addr)) : \
+ variable_test_bit((nr),(addr)))
+
+/**
+ * test_and_set_bit - Set a bit and return its old value
+ * @nr: Bit to set
+ * @addr: Address to count from
+ *
+ * This operation is atomic and cannot be reordered.  
+ * It may be reordered on other architectures than x86.
+ * It also implies a memory barrier.
+ */
+static inline int test_and_set_bit(int nr, volatile unsigned long * addr)
+{
+	int oldbit;
+
+	__asm__ __volatile__( LOCK_PREFIX
+		"btsl %2,%1\n\tsbbl %0,%0"
+		:"=r" (oldbit),"+m" (ADDR)
+		:"Ir" (nr) : "memory");
+	return oldbit;
+}
 
 
 
 
 
-
-
-
-
-
-
+/******************** netif_start_queue ********************/
 
 [ include/linux/netdevice.h ]
 
