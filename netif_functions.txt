@@ -19,7 +19,7 @@
 * emac_tx_timeout
 - netif_wake_queue(dev)
 
-
+/***************** This driver uses NAPI! ***************/
 
 
 
@@ -239,6 +239,25 @@ static inline void __netif_rx_schedule(struct net_device *dev)
 	local_irq_restore(flags);
 }
 
+[ include/asm/atomic.h ]
+
+#define dev_hold(dev) atomic_inc(&(dev)->refcnt)
+
+/*
+ * Make sure gcc doesn't try to be clever and move things around
+ * on us. We need to use _exactly_ the address the user gave us,
+ * not some alias that contains the same information.
+ */
+typedef struct { volatile int counter; } atomic_t;
+
+static __inline__ void atomic_inc(atomic_t *v)
+{
+	__asm__ __volatile__(
+		LOCK "incl %0"
+		:"=m" (v->counter)
+		:"m" (v->counter));
+}
+
 [ include/asm/bitops.h ]
 
 #if 0 /* Fool kernel-doc since it doesn't do macros yet */
@@ -249,6 +268,11 @@ static inline void __netif_rx_schedule(struct net_device *dev)
  */
 static int test_bit(int nr, const volatile void * addr);
 #endif
+
+#define test_bit(nr,addr) \
+(__builtin_constant_p(nr) ? \
+ constant_test_bit((nr),(addr)) : \
+ variable_test_bit((nr),(addr)))
 
 static __always_inline int constant_test_bit(int nr, const volatile unsigned long *addr)
 {
@@ -265,11 +289,6 @@ static inline int variable_test_bit(int nr, const volatile unsigned long * addr)
 		:"m" (ADDR),"Ir" (nr));
 	return oldbit;
 }
-
-#define test_bit(nr,addr) \
-(__builtin_constant_p(nr) ? \
- constant_test_bit((nr),(addr)) : \
- variable_test_bit((nr),(addr)))
 
 /**
  * test_and_set_bit - Set a bit and return its old value
@@ -291,7 +310,9 @@ static inline int test_and_set_bit(int nr, volatile unsigned long * addr)
 	return oldbit;
 }
 
+[ include/asm/system.h ]
 
+#define local_irq_save(x)	__asm__ __volatile__("pushfl ; popl %0 ; cli":"=g" (x): /* no input */ :"memory")
 
 
 
