@@ -1,0 +1,14 @@
+Send/Read Frame에서 어떻게 프로그램에서 
+i386.Network.Mod
+RTL8139.Mod - Controller
+FTPClient.Mod - test program 만들때 참고. fadr. (간단한 AOS Echoserver 코드?)
+
+
+DoSend, ReadFrame
+Send: array 하나 잡아서 복사. 
+
+
+
+MCPC에서 AOS 코어로 패킷 보내는 프로그램
+
+L3, L4 header (TCP + IP)
