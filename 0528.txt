@@ -1,0 +1,4 @@
+﻿FTP.Mod에서 아래 layer로 DoSend()
+Buffer도 아래로 내려가면서 어떻게 변화하는지.
+
+BootConsole.Mod가 마지막으로 실행. 얘랑 MCPC의 linux.c랑 communication.
